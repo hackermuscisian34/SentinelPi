@@ -1,0 +1,47 @@
+﻿# OS
+Thumbs.db
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.venv/
+venv/
+ENV/
+.envrc
+
+# Node
+node_modules/
+.npm/
+.npm-cache/
+.yarn/
+.yarn-cache/
+.pnp.*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build
+/dist/
+/build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Windows service artifacts
+*.pid
+*.lock
+
+# Do NOT ignore .env files per project requirement
+!*.env
+!**/*.env
