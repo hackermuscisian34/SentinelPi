@@ -45,3 +45,9 @@ yarn-error.log*
 # Do NOT ignore .env files per project requirement
 !*.env
 !**/*.env
+
+# ClamAV and large binaries
+clamav.zip
+clamav/clamav-1.5.1.win.x64/
+*.lib
+*.pdb

@@ -45,3 +45,9 @@ class SupabaseClient:
         resp = await self._request("PATCH", f"/rest/v1/{table}?{query}", json=values)
         if resp.status_code not in (200, 204):
             raise RuntimeError(f"Supabase update failed: {resp.status_code} {resp.text}")
+
+    async def delete(self, table: str, match: Dict[str, Any]) -> None:
+        query = "&".join([f"{k}=eq.{v}" for k, v in match.items()])
+        resp = await self._request("DELETE", f"/rest/v1/{table}?{query}")
+        if resp.status_code not in (200, 204):
+            raise RuntimeError(f"Supabase delete failed: {resp.status_code} {resp.text}")

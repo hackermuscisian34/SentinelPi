@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 import secrets
 import string
-from .config import settings
+from ..config import settings
 
 class PairingManager:
     def __init__(self) -> None:

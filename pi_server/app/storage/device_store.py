@@ -70,3 +70,9 @@ class DeviceStore:
                 }
                 for r in rows
             ]
+
+    async def delete(self, device_id: str) -> None:
+        async with self._lock:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("DELETE FROM devices WHERE device_id=?", (device_id,))
+                await db.commit()

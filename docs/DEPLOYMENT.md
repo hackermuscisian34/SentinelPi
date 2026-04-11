@@ -22,7 +22,7 @@
 
 ## Windows Agent
 1. Use `windows_agent/.env.example` as a template and create `.env` in the repo root
-2. Run `powershell -ExecutionPolicy Bypass -File scripts/install_windows.ps1`
+2. Run ` .\.venv\Scripts\Activate.ps1'
 3. Launch `python -m windows_agent.app.main`
 4. Enroll using pairing code from mobile app
 

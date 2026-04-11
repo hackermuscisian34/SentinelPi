@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     pairing_code_ttl_seconds: int = Field(default=300)
     device_token_ttl_seconds: int = Field(default=31536000)
 
-    telemetry_flush_interval_seconds: int = Field(default=10)
+    telemetry_flush_interval_seconds: int = Field(default=5)
     telemetry_buffer_db_path: str = Field(default="/var/lib/sentinelpi/telemetry.db")
 
     log_level: str = Field(default="INFO")

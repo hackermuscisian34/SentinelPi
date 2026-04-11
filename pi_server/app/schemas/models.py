@@ -1,4 +1,5 @@
-﻿from pydantic import BaseModel, Field
+﻿
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
 class PairingCodeCreate(BaseModel):
@@ -47,3 +48,4 @@ class CommandResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    hostname: Optional[str] = None

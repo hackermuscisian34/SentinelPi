@@ -1,4 +1,8 @@
-﻿from PySide6 import QtWidgets, QtGui, QtCore
+﻿import sys
+import asyncio
+from typing import Optional
+from PySide6 import QtWidgets, QtGui, QtCore
+from ..services.credentials import CredentialStore
 from ..agent import AgentClient
 
 class EnrollmentWindow(QtWidgets.QWidget):
@@ -42,15 +46,73 @@ class EnrollmentWindow(QtWidgets.QWidget):
         self.setLayout(layout)
 
     def _enroll(self) -> None:
+        print("DEBUG: _enroll called")
         try:
+            print(f"DEBUG: calling self.agent.enroll with IP={self.pi_ip.text().strip()}")
             data = self.agent.enroll(self.pi_ip.text().strip(), self.pairing.text().strip())
+            print("DEBUG: enroll returned data:", data)
             self.status.setText("Enrollment successful")
+            print("DEBUG: Emitting enrolled signal")
             self.enrolled.emit()
+            print("DEBUG: Signal emitted")
         except Exception as exc:
+            print(f"DEBUG: Exception in _enroll: {exc}")
+            import traceback
+            traceback.print_exc()
             self.status.setStyleSheet("color: #b00020;")
             self.status.setText(str(exc))
 
+class StatusWindow(QtWidgets.QWidget):
+    disconnected = QtCore.Signal()
+
+    def __init__(self, agent: AgentClient) -> None:
+        super().__init__()
+        self.agent = agent
+        self.setWindowTitle("SentinelPi-EDR Status")
+        self.setFixedSize(300, 150)
+        self.setStyleSheet(
+            "background-color: #f4fff7; color: #1b2b21; font-family: 'Segoe UI';"
+        )
+
+        layout = QtWidgets.QVBoxLayout()
+        title = QtWidgets.QLabel("SentinelPi Agent")
+        title.setStyleSheet("font-size: 18px; font-weight: 700; color: #1b2b21;")
+        layout.addWidget(title)
+        
+        status = QtWidgets.QLabel("Status: Connected & Protected")
+        status.setStyleSheet("color: #2f7d4c; font-weight: 600; margin-bottom: 20px;")
+        layout.addWidget(status)
+
+        disconnect_btn = QtWidgets.QPushButton("Disconnect / Unenroll")
+        disconnect_btn.setStyleSheet(
+            "background-color: #b00020; color: white; padding: 8px; border-radius: 6px; font-weight: 600;"
+        )
+        disconnect_btn.clicked.connect(self._disconnect)
+        layout.addWidget(disconnect_btn)
+        
+        self.setLayout(layout)
+
+        # Check enrollment status every 2 seconds
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._check_enrollment)
+        self.timer.start(2000)
+    
+    def _check_enrollment(self) -> None:
+        if not self.agent.enrolled():
+            print("DEBUG: Agent unenrolled (detected by timer), switching to enrollment")
+            self.disconnected.emit()
+            self.close()
+            self.timer.stop()
+
+
+    def _disconnect(self) -> None:
+        asyncio.run(self.agent.disconnect())
+        self.disconnected.emit()
+        self.close()
+
 class TrayApp(QtWidgets.QSystemTrayIcon):
+    disconnected = QtCore.Signal()
+
     def __init__(self, agent: AgentClient, app: QtWidgets.QApplication) -> None:
         # Some Qt versions don't have SP_ShieldIcon; fall back to a safe icon.
         if hasattr(QtWidgets.QStyle, "SP_ShieldIcon"):
@@ -64,9 +126,23 @@ class TrayApp(QtWidgets.QSystemTrayIcon):
         menu = QtWidgets.QMenu()
         status_action = menu.addAction("Open Dashboard")
         status_action.triggered.connect(self._open_dashboard)
+        
+        disconnect_action = menu.addAction("Disconnect")
+        disconnect_action.triggered.connect(self._handle_disconnect)
+        
         exit_action = menu.addAction("Exit")
         exit_action.triggered.connect(app.quit)
         self.setContextMenu(menu)
+
+    def _handle_disconnect(self) -> None:
+        asyncio.run(self.agent.disconnect())
+        self.disconnected.emit()
+        self.showMessage(
+            "SentinelPi-EDR",
+            "Agent disconnected. Enrollment required.",
+            QtWidgets.QSystemTrayIcon.Information,
+            3000
+        )
 
     def _open_dashboard(self) -> None:
         QtWidgets.QMessageBox.information(None, "SentinelPi-EDR", "Protection active and connected.")

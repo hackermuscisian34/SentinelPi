@@ -3,30 +3,27 @@ import uuid
 import asyncio
 from datetime import datetime
 import os
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from .config import settings
 from .utils.logging import setup_logging
-from .schemas.models import (
-    PairingCodeCreate,
-    PairingCodeResponse,
-    EnrollmentRequest,
-    EnrollmentResponse,
-    TelemetryPayload,
-    AlertPayload,
-    CommandRequest,
-    CommandResponse,
-    HealthResponse,
-)
+from .schemas.models import CommandResponse
 from .services.pairing import PairingManager
 from .services.detection import DetectionEngine
 from .services.ws_manager import ConnectionManager
+from .services.mqtt_service import MQTTService
 from .storage.telemetry_buffer import TelemetryBuffer
+
 from .storage.device_store import DeviceStore
 from .supabase_client import SupabaseClient
 from .auth import ApiKeyAuth
 import httpx
+from .routes.health import build_health_router
+from .routes.pairing import build_pairing_router
+from .routes.agent import build_agent_router
+from .routes.command import build_command_router
+from .services.ml_service import MLService
 
 setup_logging()
 
@@ -44,7 +41,10 @@ telemetry_buffer = TelemetryBuffer(settings.telemetry_buffer_db_path)
 device_store = DeviceStore(settings.telemetry_buffer_db_path)
 ws_manager = ConnectionManager()
 detection_engine = DetectionEngine()
+ml_service = MLService()
+mqtt_service = MQTTService(telemetry_buffer, detection_engine)
 supabase = SupabaseClient()
+
 auth = ApiKeyAuth(device_store)
 
 async def verify_supabase_jwt(authorization: str | None = Header(None)) -> dict:
@@ -70,123 +70,46 @@ async def verify_supabase_jwt(authorization: str | None = Header(None)) -> dict:
 
 @app.on_event("startup")
 async def startup() -> None:
+    print(f"DEBUG: DeviceStore.delete exists: {hasattr(device_store, 'delete')}")
     os.makedirs(os.path.dirname(settings.telemetry_buffer_db_path), exist_ok=True)
     await telemetry_buffer.init()
     await device_store.init()
+    mqtt_service.start()
     asyncio.create_task(flush_telemetry_loop())
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    mqtt_service.stop()
     await supabase.close()
 
-@app.get("/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
-    return HealthResponse(status="ok")
 
-@app.post("/pairing", response_model=PairingCodeResponse)
-async def create_pairing_code(payload: PairingCodeCreate, user=Depends(verify_supabase_jwt)):
-    result = pairing_manager.create(payload.device_name)
-    # store pairing code in Supabase
-    try:
-        await supabase.insert(
-            "pairing_codes",
-            [
-                {
-                    "pairing_code": result["pairing_code"],
-                    "device_name": payload.device_name,
-                    "expires_at": result["expires_at"],
-                    "created_by": user.get("id"),
-                }
-            ],
+async def send_alerts(device_id: str, alerts: list[dict]) -> None:
+    import logging
+    _log = logging.getLogger("send_alerts")
+    rows = []
+    for alert in alerts:
+        rows.append(
+            {
+                "device_id": device_id,
+                "timestamp": alert.get("timestamp"),
+                "severity": alert.get("severity"),
+                "title": alert.get("title"),
+                "description": alert.get("description"),
+                "metadata": json.dumps(alert.get("metadata", {})),
+            }
         )
-    except Exception:
-        pass
-    return PairingCodeResponse(**result)
-
-@app.post("/enroll", response_model=EnrollmentResponse)
-async def enroll(request: EnrollmentRequest, http_request: Request) -> EnrollmentResponse:
-    entry = pairing_manager.verify(request.pairing_code)
-    if not entry:
-        raise HTTPException(status_code=400, detail="Invalid or expired pairing code")
-
-    device_id = str(uuid.uuid4())
-    api_key = uuid.uuid4().hex
-    created_at = datetime.utcnow().isoformat()
-    await device_store.add(
-        {
-            "device_id": device_id,
-            "api_key": api_key,
-            "device_hostname": request.device_hostname,
-            "agent_version": request.agent_version,
-            "created_at": created_at,
-        }
-    )
-    pairing_manager.consume(request.pairing_code)
-
-    # store device in Supabase
     try:
-        await supabase.insert(
-            "devices",
-            [
-                {
-                    "device_id": device_id,
-                    "device_hostname": request.device_hostname,
-                    "agent_version": request.agent_version,
-                    "status": "online",
-                    "created_at": created_at,
-                }
-            ],
-        )
-    except Exception:
-        pass
+        await supabase.insert("alerts", rows)
+        _log.info(f"Inserted {len(rows)} alert(s) for device {device_id} into Supabase.")
+    except Exception as e:
+        _log.error(f"FAILED to insert alerts into Supabase for device {device_id}: {e}")
+        raise  # Re-raise so the caller can return HTTP 500 instead of silently dropping
 
-    host = http_request.headers.get("host") or f"{settings.host}:{settings.port}"
-    return EnrollmentResponse(
-        device_id=device_id,
-        api_key=api_key,
-        websocket_url=f"ws://{host}/ws/agent/{device_id}",
-    )
+app.include_router(build_health_router())
+app.include_router(build_pairing_router(pairing_manager, device_store, supabase, verify_supabase_jwt))
+app.include_router(build_agent_router(telemetry_buffer, detection_engine, auth, send_alerts, ml_service))
+app.include_router(build_command_router(mqtt_service, supabase, verify_supabase_jwt))
 
-@app.post("/telemetry", response_model=CommandResponse)
-async def ingest_telemetry(payload: TelemetryPayload, x_api_key: str | None = Header(None)) -> CommandResponse:
-    await auth.verify(payload.device_id, x_api_key)
-    payload_dict = payload.dict()
-    await telemetry_buffer.add(payload.device_id, json.dumps(payload_dict))
-
-    alerts = await detection_engine.analyze_telemetry(payload_dict)
-    if alerts:
-        await send_alerts(payload.device_id, alerts)
-
-    return CommandResponse(status="ok", message="Telemetry accepted")
-
-@app.post("/alert", response_model=CommandResponse)
-async def ingest_alert(payload: AlertPayload, x_api_key: str | None = Header(None)) -> CommandResponse:
-    await auth.verify(payload.device_id, x_api_key)
-    await send_alerts(payload.device_id, [payload.dict()])
-    return CommandResponse(status="ok", message="Alert accepted")
-
-@app.post("/command", response_model=CommandResponse)
-async def send_command(payload: CommandRequest, user=Depends(verify_supabase_jwt)) -> CommandResponse:
-    delivered = await ws_manager.send_command(
-        payload.device_id, {"command": payload.command, "args": payload.args}
-    )
-    if not delivered:
-        raise HTTPException(status_code=404, detail="Device not connected")
-    try:
-        await supabase.insert(
-            "audit_logs",
-            [
-                {
-                    "device_id": payload.device_id,
-                    "action": payload.command,
-                    "actor": user.get("id"),
-                    "timestamp": datetime.utcnow().isoformat(),
-                }
-            ],
-        )
-    except Exception:
-        pass
-    return CommandResponse(status="ok", message="Command delivered")
 
 @app.websocket("/ws/agent/{device_id}")
 async def ws_agent(websocket: WebSocket, device_id: str, api_key: str | None = None):
@@ -210,6 +133,9 @@ async def ws_agent(websocket: WebSocket, device_id: str, api_key: str | None = N
         await ws_manager.disconnect(device_id)
 
 async def flush_telemetry_loop() -> None:
+    import logging
+    logger = logging.getLogger("telemetry_flush")
+    
     while True:
         await asyncio.sleep(settings.telemetry_flush_interval_seconds)
         batch = await telemetry_buffer.fetch_batch(limit=100)
@@ -224,34 +150,49 @@ async def flush_telemetry_loop() -> None:
                     {
                         "device_id": payload.get("device_id"),
                         "timestamp": payload.get("timestamp"),
-                        "summary": json.dumps(
-                            {
+                        "summary": {
                                 "cpu": payload.get("cpu"),
                                 "memory": payload.get("memory"),
                                 "process_count": len(payload.get("processes", [])),
-                            }
-                        ),
+                            },
                     }
                 )
+            # Use the custom wrapper's insert method: insert(table, rows)
             await supabase.insert("telemetry_summaries", rows)
             await telemetry_buffer.delete_ids(ids)
-        except Exception:
+        except Exception as e:
+            # Log detailed error information
+            error_msg = str(e)
+            logger.error(f"Flush error: {e}")
+            
+            # If it's a foreign key violation, log which device_id is problematic
+            if "23503" in error_msg or "foreign key constraint" in error_msg.lower():
+                device_ids = [json.loads(item["payload"]).get("device_id") for item in batch]
+                logger.error(f"Foreign key violation for device_id(s): {set(device_ids)}")
+                logger.error("These devices may not exist in the 'devices' table in Supabase")
+            
             continue
 
-async def send_alerts(device_id: str, alerts: list[dict]) -> None:
-    rows = []
-    for alert in alerts:
-        rows.append(
-            {
-                "device_id": device_id,
-                "timestamp": alert.get("timestamp"),
-                "severity": alert.get("severity"),
-                "title": alert.get("title"),
-                "description": alert.get("description"),
-                "metadata": json.dumps(alert.get("metadata", {})),
-            }
-        )
+
+@app.delete("/devices/{device_id}", response_model=CommandResponse)
+async def delete_device(device_id: str, user=Depends(verify_supabase_jwt)):
     try:
-        await supabase.insert("alerts", rows)
-    except Exception:
-        pass
+        print(f"DEBUG: Attempting to delete device {device_id}")
+        # Remove from local store
+        if hasattr(device_store, 'delete'):
+             await device_store.delete(device_id)
+        else:
+             print("ERROR: DeviceStore missing delete method!")
+             raise Exception("Server code outdated: DeviceStore.delete missing")
+
+        # Remove from Supabase
+        print(f"DEBUG: Deleting from Supabase...")
+        # Use custom wrapper's delete method: delete(table, match)
+        await supabase.delete("devices", {"device_id": device_id})
+        print(f"DEBUG: Device {device_id} deleted successfully.")
+        return CommandResponse(status="ok", message="Device removed")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"ERROR in delete_device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
