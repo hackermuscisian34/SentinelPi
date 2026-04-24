@@ -5,6 +5,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import * as SplashScreenExpo from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import * as Notifications from "expo-notifications";
 import SplashScreen from "./src/screens/SplashScreen";
 import LoginScreen from "./src/screens/LoginScreen";
 import SignupScreen from "./src/screens/SignupScreen";
@@ -14,12 +15,13 @@ import DeviceControlScreen from "./src/screens/DeviceControlScreen";
 import MainTabNavigator from "./src/navigation/MainTabNavigator";
 import DeviceTelemetryScreen from "./src/screens/DeviceTelemetryScreen";
 import { theme } from "./src/ui/theme";
+import { getToken } from "./src/state/secureStore";
+import { supabase } from "./src/api/supabase";
 
 // Keep the native splash screen visible while we load
 SplashScreenExpo.preventAutoHideAsync();
 
 const Stack = createStackNavigator();
-import * as Notifications from "expo-notifications";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -72,22 +74,9 @@ export default function App() {
 
   // Global Alert Listener for Notifications
   useEffect(() => {
-    // We need to initialize the listener, but we might not have a token yet if not logged in.
-    // Ideally this should be in a Context or checking auth state. 
-    // For now, we'll try to set it up if we can get a token, or retry.
-    // A simpler way: Just put this hook in MainTabNavigator? 
-    // Or just run it here and check auth inside.
-
-    // Actually, `App.tsx` wraps everything. We can't use `getToken()` easily if it's async inside the render unless we manage state.
-    // But since `getToken` is async, we can do it in a useEffect.
-
     let channel: any;
     const setupListener = async () => {
       try {
-        // We might need to wait for login
-        // This is a quick fix. In a real app, use AuthContext.
-        const { getToken } = require("./src/state/secureStore");
-        const { supabase } = require("./src/api/supabase");
         const token = await getToken();
 
         if (!token) return; // User not logged in, no notifications
@@ -122,15 +111,10 @@ export default function App() {
       }
     };
 
-    // Try to setup listener every time app state changes or just once?
-    // Doing it once on mount is fine, but if user logs in later, it won't trigger.
-    // For now, let's assume valid session or we miss notifications until restart.
-    // Optimization: Add a polling or dependency on auth.
     setupListener();
 
     return () => {
       if (channel) {
-        const { supabase } = require("./src/api/supabase");
         supabase.removeChannel(channel);
       }
     }

@@ -1,6 +1,7 @@
 ﻿import json
 import uuid
 import asyncio
+import logging
 from datetime import datetime
 import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header
@@ -70,12 +71,14 @@ async def verify_supabase_jwt(authorization: str | None = Header(None)) -> dict:
 
 @app.on_event("startup")
 async def startup() -> None:
-    print(f"DEBUG: DeviceStore.delete exists: {hasattr(device_store, 'delete')}")
+    logger = logging.getLogger("main")
+    logger.info("Starting SentinelPi-EDR Pi Server...")
     os.makedirs(os.path.dirname(settings.telemetry_buffer_db_path), exist_ok=True)
     await telemetry_buffer.init()
     await device_store.init()
     mqtt_service.start()
     asyncio.create_task(flush_telemetry_loop())
+    logger.info("Pi Server started successfully")
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
@@ -84,7 +87,6 @@ async def shutdown() -> None:
 
 
 async def send_alerts(device_id: str, alerts: list[dict]) -> None:
-    import logging
     _log = logging.getLogger("send_alerts")
     rows = []
     for alert in alerts:
@@ -176,23 +178,16 @@ async def flush_telemetry_loop() -> None:
 
 @app.delete("/devices/{device_id}", response_model=CommandResponse)
 async def delete_device(device_id: str, user=Depends(verify_supabase_jwt)):
+    logger = logging.getLogger("main")
     try:
-        print(f"DEBUG: Attempting to delete device {device_id}")
+        logger.info(f"Deleting device {device_id}")
         # Remove from local store
-        if hasattr(device_store, 'delete'):
-             await device_store.delete(device_id)
-        else:
-             print("ERROR: DeviceStore missing delete method!")
-             raise Exception("Server code outdated: DeviceStore.delete missing")
+        await device_store.delete(device_id)
 
         # Remove from Supabase
-        print(f"DEBUG: Deleting from Supabase...")
-        # Use custom wrapper's delete method: delete(table, match)
         await supabase.delete("devices", {"device_id": device_id})
-        print(f"DEBUG: Device {device_id} deleted successfully.")
+        logger.info(f"Device {device_id} deleted successfully")
         return CommandResponse(status="ok", message="Device removed")
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"ERROR in delete_device: {e}")
+        logger.error(f"Error deleting device {device_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

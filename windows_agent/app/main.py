@@ -83,8 +83,6 @@ def main() -> None:
 
     tray.disconnected.connect(on_disconnected)
 
-    tray.disconnected.connect(on_disconnected)
-
     if not agent.enrolled():
         print("Agent not enrolled. Showing enrollment window.")
         show_enrollment()

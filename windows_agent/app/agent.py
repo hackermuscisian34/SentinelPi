@@ -184,7 +184,7 @@ class AgentClient:
 
                 # Publish result back to MQTT
                 if correlation_id: # Only publish if correlation_id is present
-                    self.mqtt_client.publish(
+                    client.publish(
                         f"sentinelpi/response/{self.device_id}/{correlation_id}",
                         json.dumps(result)
                     )
