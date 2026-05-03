@@ -98,10 +98,7 @@ export default function App() {
                   sound: true,
                   priority: Notifications.AndroidNotificationPriority.MAX,
                 },
-                trigger: {
-                  channelId: 'default',
-                  seconds: 1,
-                },
+                trigger: null,
               });
             }
           )

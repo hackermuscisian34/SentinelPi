@@ -1,7 +1,7 @@
 
 import time
 import threading
-from pynput import mouse, keyboard
+from pynput import mouse, keyboard  # type: ignore
 import logging
 
 logger = logging.getLogger("activity_monitor")

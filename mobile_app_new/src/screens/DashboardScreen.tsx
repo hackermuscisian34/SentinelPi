@@ -93,7 +93,7 @@ export default function DashboardScreen({ navigation }: any) {
         // Otherwise pass it as 'target' (quick options)
         const isFullPath = target.includes("\\") || target.includes("/");
 
-        const payload = isFullPath ? { command: "trigger_scan", path: target } : { target };
+        const payload = isFullPath ? { path: target } : { target };
 
         sendCommand("trigger_scan", payload);
 
@@ -652,7 +652,7 @@ const styles = StyleSheet.create({
     liveText: { fontSize: 10, fontWeight: "bold" },
     sectionTitle: { fontSize: 18, fontWeight: "bold", color: theme.colors.text, marginBottom: 16 },
     controlGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-    actionBtn: { width: "31%", marginBottom: 16, borderRadius: 12, overflow: "hidden" },
+    actionBtn: { width: "48%", marginBottom: 16, borderRadius: 12, overflow: "hidden" },
     actionGradient: { padding: 16, alignItems: "center", justifyContent: "center", height: 100 },
     actionLabel: { marginTop: 8, fontSize: 12, fontWeight: "600", textAlign: "center" },
     removeBtn: { backgroundColor: "rgba(255, 51, 102, 0.1)", padding: 16, borderRadius: 12, alignItems: "center", marginBottom: 24, borderWidth: 1, borderColor: theme.colors.danger },

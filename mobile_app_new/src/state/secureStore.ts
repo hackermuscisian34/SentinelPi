@@ -19,13 +19,13 @@ export async function getPiIp(): Promise<string | null> {
     return await SecureStore.getItemAsync(PI_IP_KEY);
 }
 
+const USER_EMAIL_KEY = "sentinelpi_user_email";
+
 export async function clearAll() {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     await SecureStore.deleteItemAsync(PI_IP_KEY);
     await SecureStore.deleteItemAsync(USER_EMAIL_KEY);
 }
-
-const USER_EMAIL_KEY = "sentinelpi_user_email";
 
 export async function saveUserEmail(email: string) {
     await SecureStore.setItemAsync(USER_EMAIL_KEY, email);

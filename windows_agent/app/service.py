@@ -1,7 +1,7 @@
-﻿import win32serviceutil
-import win32service
-import win32event
-import servicemanager
+import win32serviceutil  # type: ignore
+import win32service  # type: ignore
+import win32event  # type: ignore
+import servicemanager  # type: ignore
 import asyncio
 import logging
 from .agent import AgentClient

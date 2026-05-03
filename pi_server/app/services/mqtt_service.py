@@ -11,10 +11,11 @@ logger = logging.getLogger("mqtt")
 
 class MQTTService:
     def __init__(self, telemetry_buffer, detection_engine):
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
         self.telemetry_buffer = telemetry_buffer
         self.detection_engine = detection_engine
         self._pending: dict[str, dict] = {}  # correlation_id -> {event, result}
+        self._loop: asyncio.AbstractEventLoop | None = None
 
         # Callbacks
         self.client.on_connect = self.on_connect
@@ -46,10 +47,11 @@ class MQTTService:
                         self._pending[correlation_id]["event"].set()
             elif topic.startswith("sentinel/telemetry/"):
                 device_id = topic.split("/")[-1]
-                asyncio.run_coroutine_threadsafe(
-                    self.process_telemetry(device_id, payload),
-                    asyncio.get_event_loop()
-                )
+                if self._loop:
+                    asyncio.run_coroutine_threadsafe(
+                        self.process_telemetry(device_id, payload),
+                        self._loop
+                    )
             elif topic.startswith("sentinel/heartbeat/"):
                 pass
 
@@ -65,7 +67,8 @@ class MQTTService:
         except Exception as e:
             logger.error(f"Failed to buffer telemetry: {e}")
 
-    def start(self):
+    def start(self, loop: asyncio.AbstractEventLoop | None = None):
+        self._loop = loop or asyncio.get_event_loop()
         try:
             self.client.connect("localhost", 1883, 60)
             self.client.loop_start()
@@ -76,14 +79,14 @@ class MQTTService:
         self.client.loop_stop()
         self.client.disconnect()
 
-    def publish_command(self, device_id: str, command: str, args: dict = None):
+    def publish_command(self, device_id: str, command: str, args: dict | None = None):
         topic = f"sentinel/command/{device_id}"
         payload = json.dumps({"command": command, "args": args or {}})
         info = self.client.publish(topic, payload, qos=1)
         return info.rc == mqtt.MQTT_ERR_SUCCESS
 
     def publish_command_sync(
-        self, device_id: str, command: str, args: dict = None, timeout: float = 15.0
+        self, device_id: str, command: str, args: dict | None = None, timeout: float = 15.0
     ) -> Optional[dict]:
         """Publish a command and wait for the agent's response. Returns the result dict or None on timeout."""
         correlation_id = str(uuid.uuid4())

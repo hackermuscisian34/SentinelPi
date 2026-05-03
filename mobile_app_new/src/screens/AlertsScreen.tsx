@@ -64,7 +64,7 @@ export default function AlertsScreen() {
                                 sound: true,
                                 priority: Notifications.AndroidNotificationPriority.MAX,
                             },
-                            trigger: { channelId: "default", seconds: 1 },
+                            trigger: null,
                         });
                     }
                 )
@@ -394,7 +394,7 @@ export default function AlertsScreen() {
                         <TouchableOpacity
                             key={a.id}
                             activeOpacity={0.8}
-                            onPress={() => setSelectedAlert(a)}
+                            onPress={() => fetchAlertDetails(a)}
                         >
                             <LinearGradient colors={theme.gradients.card} style={[styles.card, { borderLeftColor: color, borderLeftWidth: 4 }]}>
                                 <View style={styles.headerRow}>
@@ -413,7 +413,7 @@ export default function AlertsScreen() {
 
                                 <TouchableOpacity
                                     style={styles.viewReportButton}
-                                    onPress={() => setSelectedAlert(a)}
+                                    onPress={() => fetchAlertDetails(a)}
                                 >
                                     <Ionicons name="document-text-outline" size={16} color="white" />
                                     <Text style={styles.viewReportText}>View AI Report</Text>

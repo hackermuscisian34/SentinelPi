@@ -1,4 +1,4 @@
-﻿import json
+import json
 import uuid
 import asyncio
 import logging
@@ -76,7 +76,7 @@ async def startup() -> None:
     os.makedirs(os.path.dirname(settings.telemetry_buffer_db_path), exist_ok=True)
     await telemetry_buffer.init()
     await device_store.init()
-    mqtt_service.start()
+    mqtt_service.start(loop=asyncio.get_event_loop())
     asyncio.create_task(flush_telemetry_loop())
     logger.info("Pi Server started successfully")
 
@@ -90,6 +90,14 @@ async def send_alerts(device_id: str, alerts: list[dict]) -> None:
     _log = logging.getLogger("send_alerts")
     rows = []
     for alert in alerts:
+        # Ensure metadata is a dict for Supabase jsonb — do NOT json.dumps it
+        meta = alert.get("metadata", {})
+        if isinstance(meta, str):
+            try:
+                import json as _json
+                meta = _json.loads(meta)
+            except Exception:
+                meta = {}
         rows.append(
             {
                 "device_id": device_id,
@@ -97,7 +105,7 @@ async def send_alerts(device_id: str, alerts: list[dict]) -> None:
                 "severity": alert.get("severity"),
                 "title": alert.get("title"),
                 "description": alert.get("description"),
-                "metadata": json.dumps(alert.get("metadata", {})),
+                "metadata": meta,
             }
         )
     try:

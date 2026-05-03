@@ -1,0 +1,25 @@
+[Unit]
+Description=SentinelPi EDR Edge Server
+After=network.target mosquitto.service
+Wants=mosquitto.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/sentinelpi/pi_server
+Environment=PATH=/opt/sentinelpi/pi_server/.venv/bin:/usr/bin:/bin
+EnvironmentFile=/opt/sentinelpi/pi_server/.env
+ExecStart=/opt/sentinelpi/pi_server/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sentinelpi /opt/sentinelpi/pi_server
+
+[Install]
+WantedBy=multi-user.target

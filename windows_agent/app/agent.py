@@ -1,21 +1,17 @@
-﻿import asyncio
+import asyncio
+import datetime
 import json
 import logging
 import os
 import socket
-import requests
-try:
-    from websockets.exceptions import InvalidStatus
-except ImportError:
-    from websockets.exceptions import InvalidStatusCode as InvalidStatus
+import requests  # type: ignore
 from typing import Optional
 import time
 import threading
-import queue
 import paho.mqtt.client as mqtt
 from supabase import create_client, Client
 
-from .config import config, MQTT_BROKER, MQTT_PORT, SUPABASE_URL, SUPABASE_KEY, DEVICE_ID
+from .config import config, MQTT_BROKER, MQTT_PORT, SUPABASE_URL, SUPABASE_KEY
 from .services.credentials import CredentialStore
 from .services.telemetry import TelemetryCollector
 from .services.commands import CommandExecutor
@@ -29,9 +25,9 @@ logger = logging.getLogger("agent")
 class AgentClient:
     def __init__(self) -> None:
         self.creds = CredentialStore()
-        self.telemetry = TelemetryCollector() # Kept telemetry as it's used later
-        self.command_queue = queue.Queue() # Added command_queue
+        self.telemetry = TelemetryCollector()
         self.commands = CommandExecutor()
+        self.mqtt_client: Optional[mqtt.Client] = None
         self.download_watcher = DownloadWatcher(self._on_file_changed)
         self.activity_monitor = ActivityMonitor(
             self._on_user_activity, 
@@ -129,12 +125,11 @@ class AgentClient:
     # MQTT Loop replacing WS Loop
     async def _ws_loop(self) -> None:
         """Main loop for MQTT connection."""
-        import paho.mqtt.client as mqtt
-        
         device_id = self.creds.get("device_id")
         pi_ip = self.creds.get("pi_ip") or config.PI_SERVER_IP
         
-        client = mqtt.Client(client_id=f"agent_{device_id}")
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=f"agent_{device_id}")
+        self.mqtt_client = client
         
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
@@ -218,7 +213,7 @@ class AgentClient:
                 heartbeat = {
                     "type": "heartbeat",
                     "device_id": device_id,
-                    "timestamp": __import__("datetime").datetime.utcnow().isoformat()
+                    "timestamp": datetime.datetime.utcnow().isoformat()
                 }
                 client.publish("sentinel/heartbeat", json.dumps(heartbeat))
                 await asyncio.sleep(config.HEARTBEAT_INTERVAL_SECONDS)
@@ -235,7 +230,7 @@ class AgentClient:
 
     async def _send_command_result(self, command: str, result: dict) -> None:
         """Post meaningful scan-result alerts to the Pi Server. Ignores non-scan commands."""
-        import datetime, re
+        import re
 
         # Only create alerts for scan-like commands
         SCAN_COMMANDS = {"trigger_scan", "auto_scan", "quarantine"}
@@ -268,9 +263,6 @@ class AgentClient:
                 logger.warning("Failed to send scan-error alert: %s", exc)
             return
 
-        device_id = self.creds.get("device_id")
-        api_key   = self.creds.get("api_key")
-        pi_ip     = self.creds.get("pi_ip") or config.PI_SERVER_IP
 
         # ── Summarise ClamAV output ───────────────────────────────────────────
         clamav_raw  = result.get("clamav", {}).get("output", "") if isinstance(result.get("clamav"), dict) else ""
@@ -401,12 +393,6 @@ class AgentClient:
     def _on_security_alert(self, title: str, description: str, severity: str) -> None:
         """Shared callback for DeviceMonitor and CameraMonitor alerts."""
         logger.warning("Security alert: [%s] %s — %s", severity.upper(), title, description)
-        result = {
-            "status": severity,
-            "message": description,
-            "title": title,
-            "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
-        }
         if hasattr(self, "loop") and self.loop:
             asyncio.run_coroutine_threadsafe(
                 self._send_security_alert(title, description, severity),
@@ -418,8 +404,7 @@ class AgentClient:
         device_id = self.creds.get("device_id")
         api_key = self.creds.get("api_key")
         pi_ip = self.creds.get("pi_ip") or config.PI_SERVER_IP
-        import datetime
-        payload = {
+        payload: dict = {
             "device_id": device_id,
             "timestamp": datetime.datetime.utcnow().isoformat(),
             "severity": severity,

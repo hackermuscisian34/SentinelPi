@@ -2,7 +2,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { theme } from "../ui/theme";
-import * as SecureStore from "expo-secure-store";
+import { clearAll } from "../state/secureStore";
 
 export default function SettingsScreen({ navigation }: any) {
 
@@ -13,7 +13,7 @@ export default function SettingsScreen({ navigation }: any) {
                 text: "Logout",
                 style: "destructive",
                 onPress: async () => {
-                    await SecureStore.deleteItemAsync("session_token");
+                    await clearAll();
                     navigation.replace("Login");
                 }
             }

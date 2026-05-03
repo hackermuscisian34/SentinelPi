@@ -1,5 +1,5 @@
-﻿import psutil
-import socket
+import psutil  # type: ignore
+
 import subprocess
 from datetime import datetime
 from typing import List, Dict, Any

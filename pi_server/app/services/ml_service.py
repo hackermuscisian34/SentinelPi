@@ -1,6 +1,6 @@
 
 import os
-import google.generativeai as genai
+import google.generativeai as genai  # type: ignore
 from typing import Dict, Any, Optional
 import json
 
@@ -24,7 +24,7 @@ class MLService:
             if isinstance(meta, str):
                 try:
                    meta = json.loads(meta)
-                except:
+                except Exception:
                    pass
             
             clamav_out = meta.get("clamav", {}).get("output", "")
@@ -34,7 +34,8 @@ class MLService:
 
             # Pre-process output to reduce token usage and focus on threats
             def filter_log(log_text):
-                if not log_text: return ""
+                if not log_text:
+                    return ""
                 lines = log_text.splitlines()
                 # Keep lines that are not just "OK" or empty
                 interesting = [line for line in lines if " OK" not in line and line.strip()]

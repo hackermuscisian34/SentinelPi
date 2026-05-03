@@ -1,4 +1,4 @@
-﻿import os
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -36,4 +36,4 @@ MQTT_BROKER = config.PI_SERVER_IP
 MQTT_PORT = config.MQTT_BROKER_PORT
 SUPABASE_URL = config.SUPABASE_URL
 SUPABASE_KEY = config.SUPABASE_KEY
-DEVICE_ID = None
+

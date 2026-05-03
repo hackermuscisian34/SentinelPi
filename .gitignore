@@ -1,4 +1,4 @@
-﻿# OS
+# OS
 Thumbs.db
 .DS_Store
 
@@ -30,8 +30,8 @@ yarn-debug.log*
 yarn-error.log*
 
 # Build
-/dist/
-/build/
+dist/
+build/
 
 # IDE
 .vscode/

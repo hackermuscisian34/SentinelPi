@@ -1,4 +1,4 @@
-﻿import httpx
+import httpx
 import asyncio
 from typing import Any, Dict, List
 from .config import settings
@@ -13,7 +13,7 @@ class SupabaseClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def _request(self, method: str, path: str, json: Dict[str, Any] | None = None) -> httpx.Response:
+    async def _request(self, method: str, path: str, body: Dict[str, Any] | List[Dict[str, Any]] | None = None) -> httpx.Response:
         headers = {
             "apikey": self.service_key,
             "Authorization": f"Bearer {self.service_key}",
@@ -23,7 +23,7 @@ class SupabaseClient:
         last_exc: Exception | None = None
         for attempt in range(1, 4):
             try:
-                resp = await self._client.request(method, url, headers=headers, json=json)
+                resp = await self._client.request(method, url, headers=headers, json=body)
                 if resp.status_code >= 500:
                     await asyncio.sleep(0.5 * attempt)
                     continue
@@ -36,13 +36,13 @@ class SupabaseClient:
         raise RuntimeError("Supabase request failed")
 
     async def insert(self, table: str, rows: List[Dict[str, Any]]) -> None:
-        resp = await self._request("POST", f"/rest/v1/{table}", json=rows)
+        resp = await self._request("POST", f"/rest/v1/{table}", body=rows)
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"Supabase insert failed: {resp.status_code} {resp.text}")
 
     async def update(self, table: str, values: Dict[str, Any], match: Dict[str, Any]) -> None:
         query = "&".join([f"{k}=eq.{v}" for k, v in match.items()])
-        resp = await self._request("PATCH", f"/rest/v1/{table}?{query}", json=values)
+        resp = await self._request("PATCH", f"/rest/v1/{table}?{query}", body=values)
         if resp.status_code not in (200, 204):
             raise RuntimeError(f"Supabase update failed: {resp.status_code} {resp.text}")
 

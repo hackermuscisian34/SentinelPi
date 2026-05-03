@@ -1,8 +1,5 @@
-﻿import sys
 import asyncio
-from typing import Optional
-from PySide6 import QtWidgets, QtGui, QtCore
-from ..services.credentials import CredentialStore
+from PySide6 import QtWidgets, QtCore
 from ..agent import AgentClient
 
 class EnrollmentWindow(QtWidgets.QWidget):
@@ -106,7 +103,16 @@ class StatusWindow(QtWidgets.QWidget):
 
 
     def _disconnect(self) -> None:
-        asyncio.run(self.agent.disconnect())
+        if hasattr(self.agent, 'loop') and self.agent.loop:
+            future = asyncio.run_coroutine_threadsafe(
+                self.agent.disconnect(), self.agent.loop
+            )
+            try:
+                future.result(timeout=5)
+            except Exception:
+                pass
+        else:
+            asyncio.run(self.agent.disconnect())
         self.disconnected.emit()
         self.close()
 
@@ -116,9 +122,9 @@ class TrayApp(QtWidgets.QSystemTrayIcon):
     def __init__(self, agent: AgentClient, app: QtWidgets.QApplication) -> None:
         # Some Qt versions don't have SP_ShieldIcon; fall back to a safe icon.
         if hasattr(QtWidgets.QStyle, "SP_ShieldIcon"):
-            icon = app.style().standardIcon(QtWidgets.QStyle.SP_ShieldIcon)
+            icon = app.style().standardIcon(QtWidgets.QStyle.SP_ShieldIcon)  # type: ignore
         else:
-            icon = app.style().standardIcon(QtWidgets.QStyle.SP_ComputerIcon)
+            icon = app.style().standardIcon(QtWidgets.QStyle.SP_ComputerIcon)  # type: ignore
         super().__init__(icon, app)
         self.agent = agent
         self.setToolTip("SentinelPi-EDR")
@@ -135,14 +141,23 @@ class TrayApp(QtWidgets.QSystemTrayIcon):
         self.setContextMenu(menu)
 
     def _handle_disconnect(self) -> None:
-        asyncio.run(self.agent.disconnect())
+        if hasattr(self.agent, 'loop') and self.agent.loop:
+            future = asyncio.run_coroutine_threadsafe(
+                self.agent.disconnect(), self.agent.loop
+            )
+            try:
+                future.result(timeout=5)
+            except Exception:
+                pass
+        else:
+            asyncio.run(self.agent.disconnect())
         self.disconnected.emit()
         self.showMessage(
             "SentinelPi-EDR",
             "Agent disconnected. Enrollment required.",
-            QtWidgets.QSystemTrayIcon.Information,
+            QtWidgets.QSystemTrayIcon.MessageIcon.Information,  # type: ignore
             3000
         )
 
     def _open_dashboard(self) -> None:
-        QtWidgets.QMessageBox.information(None, "SentinelPi-EDR", "Protection active and connected.")
+        QtWidgets.QMessageBox.information(None, "SentinelPi-EDR", "Protection active and connected.")  # type: ignore

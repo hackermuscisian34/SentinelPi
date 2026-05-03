@@ -1,6 +1,6 @@
 import logging
 import threading
-import time
+
 from typing import Callable
 
 logger = logging.getLogger("agent.device_monitor")
